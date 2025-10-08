@@ -46,8 +46,10 @@ pub fn write_cycle(
     cycles: &HashMap<Unsigned, Vec<Unsigned>>,
     cycle_counts: &HashMap<&Unsigned, usize>,
     a: u64,
+    p: u64
 ) -> Result<()> {
-    let dir = Path::new("cycles");
+    let path = format!("cycles_{}", p);
+    let dir = Path::new(&path);
     fs::create_dir_all(dir).context("Failed to create 'cycles' directory")?;
     let path = dir.join(format!("cycle{}.csv", a));
     let mut wtr = Writer::from_path(&path).context("Failed to create CSV writer")?;
@@ -105,7 +107,7 @@ mod tests {
         );
         let one = Unsigned::from(1u64);
         let cycle_counts: HashMap<&Unsigned, usize> = HashMap::from([(&one, 2)]);
-        write_cycle(&cycles, &cycle_counts, 3).unwrap();
+        write_cycle(&cycles, &cycle_counts, 3, 2).unwrap();
 
         assert!(Path::new("cycles/cycle3.csv").exists());
 

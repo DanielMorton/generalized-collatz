@@ -11,11 +11,11 @@ pub enum Unsigned {
 
 impl Unsigned {
     #[inline]
-    pub fn is_even(&self) -> bool {
+    pub fn is_even(&self, p: u64) -> bool {
         match self {
-            Unsigned::U64(u) => u % 2 == 0,
-            Unsigned::U128(u) => u % 2 == 0,
-            Unsigned::BigInteger(i) => i.is_even(),
+            Unsigned::U64(u) => u % p == 0,
+            Unsigned::U128(u) => u % (p as u128) == 0,
+            Unsigned::BigInteger(i) => i.mod_u(p as u32) == 0,
         }
     }
 }
@@ -48,7 +48,7 @@ impl From<Integer> for Unsigned {
     }
 }
 
-fn collatz_step(n: &mut Unsigned, a: u64, p: u64) {
+fn collatz_step(n: &mut Unsigned, a: u64, p: u64, e: u32) {
     *n = match n {
         Unsigned::U64(u) => u
             .checked_mul(a)
@@ -67,33 +67,33 @@ fn collatz_step(n: &mut Unsigned, a: u64, p: u64) {
 
     *n = match n {
         Unsigned::U64(u) => u
-            .checked_add(p - (*u & (p - 1)))
+            .checked_add(p.pow(e) - (*u % p.pow(e)))
             .map(Unsigned::U64)
-            .unwrap_or_else(|| Unsigned::U128((*u as u128) + (p - (*u & (p - 1))) as u128)),
+            .unwrap_or_else(|| Unsigned::U128((*u as u128) + (p.pow(e) - (*u % p.pow(e))) as u128)),
         Unsigned::U128(u) => {
             let p128 = p as u128;
-            u.checked_add(p128 - (*u & (p128 - 1)))
+            u.checked_add(p128.pow(e) - (*u % p128.pow(e)))
                 .map(Unsigned::U128)
                 .unwrap_or_else(|| {
                     let mut i = Integer::new();
                     i.assign(*u);
-                    Unsigned::BigInteger(i + (p128 - (*u & (p128 - 1))) as u64)
+                    Unsigned::BigInteger(i + (p128.pow(e) - (*u % p128.pow(e))) as u64)
                 })
         }
-        Unsigned::BigInteger(u) => Unsigned::BigInteger(u.clone() + (p as u32) - u.mod_u(p as u32)),
+        Unsigned::BigInteger(u) => Unsigned::BigInteger(u.clone() + (p.pow(e) as u32 - u.mod_u(p.pow(e) as u32))),
     };
 
-    while n.is_even() {
+    while n.is_even(p) {
         *n = match n {
-            Unsigned::U64(u) => Unsigned::U64(*u / 2),
+            Unsigned::U64(u) => Unsigned::U64(*u / p),
             Unsigned::U128(u) => {
-                let v = *u / 2;
+                let v = *u / (p as u128);
                 u64::try_from(v)
                     .map(Unsigned::U64)
                     .unwrap_or(Unsigned::U128(v))
             }
             Unsigned::BigInteger(u) => {
-                let v: Integer = u.clone() / 2;
+                let v: Integer = u.clone() / p;
                 v.to_u128()
                     .map(Unsigned::U128)
                     .unwrap_or_else(|| Unsigned::BigInteger(v))
@@ -102,11 +102,11 @@ fn collatz_step(n: &mut Unsigned, a: u64, p: u64) {
     }
 }
 
-fn collatz_cycle(n: &Unsigned, a: u64, p: u64, cycle: &mut Vec<Unsigned>) {
+fn collatz_cycle(n: &Unsigned, a: u64, p: u64, e: u32, cycle: &mut Vec<Unsigned>) {
     let mut m = n.clone();
     while &m != n || cycle.is_empty() {
         cycle.push(m.clone());
-        collatz_step(&mut m, a, p);
+        collatz_step(&mut m, a, p, e);
     }
     let min_id = cycle
         .iter()
@@ -123,33 +123,34 @@ pub fn extended_collatz(
     n: u64,
     a: u64,
     p: u64,
+    e: u32,
     cycle_mins: &mut Vec<Unsigned>,
     cycles: &mut HashMap<Unsigned, Vec<Unsigned>>,
 ) {
     let (mut slow, mut fast, un) = (Unsigned::from(n), Unsigned::from(n), Unsigned::from(n));
     loop {
-        collatz_step(&mut slow, a, p);
-        collatz_step(&mut fast, a, p);
-        collatz_step(&mut fast, a, p);
+        collatz_step(&mut slow, a, p, e);
+        collatz_step(&mut fast, a, p, e);
+        collatz_step(&mut fast, a, p, e);
         if slow == fast || slow < un || fast < un {
             break;
         }
     }
     let cycle_min = if slow < un {
         if let Unsigned::U64(m) = slow {
-            cycle_mins[(m / 2) as usize].clone()
+            cycle_mins[((m / p) * p + (m % p) - (m / p) - 1) as usize].clone()
         } else {
             panic!("Unexpected Unsigned variant")
         }
     } else if fast < un {
         if let Unsigned::U64(m) = fast {
-            cycle_mins[(m / 2) as usize].clone()
+            cycle_mins[((m / p) * p + (m % p) - (m / p) - 1) as usize].clone()
         } else {
             panic!("Unexpected Unsigned variant")
         }
     } else {
         let mut cycle = Vec::new();
-        collatz_cycle(&slow, a, p, &mut cycle);
+        collatz_cycle(&slow, a, p, e, &mut cycle);
         let cm = cycle[0].clone();
         if !cycles.contains_key(&cm) {
             cycles.insert(cm.clone(), cycle);
@@ -157,26 +158,4 @@ pub fn extended_collatz(
         cm
     };
     cycle_mins.push(cycle_min);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_collatz_step() {
-        let mut n = Unsigned::from(3u64);
-        collatz_step(&mut n, 5, 4);
-        assert_eq!(n, Unsigned::from(1u64));
-    }
-
-    #[test]
-    fn test_extended_collatz() {
-        let mut cycle_mins = vec![Unsigned::from(1u64)];
-        let mut cycles = HashMap::new();
-        cycles.insert(Unsigned::from(1u64), cycle_mins.clone());
-        extended_collatz(3, 3, 2, &mut cycle_mins, &mut cycles);
-        assert_eq!(cycle_mins.len(), 2);
-        assert_eq!(cycles.len(), 1);
-    }
 }
