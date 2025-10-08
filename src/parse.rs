@@ -7,6 +7,9 @@ pub struct Args {
     #[structopt(short, long)]
     pub n: u64,
 
+    #[structopt(short, long)]
+    pub p: u64,
+
     #[structopt(short = "s", long = "start")]
     pub a_start: u64,
 
