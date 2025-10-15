@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rayon::prelude::IntoParallelIterator;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -72,6 +72,8 @@ fn main() -> Result<()> {
 
     let results: Vec<_> = (args.a_start..=args.a_end)
         .filter(|&a| a % args.p != 0)
+        .collect::<Vec<_>>()
+        .into_par_iter()
         .map(|a| process_collatz(a, args.n, args.p, args.write_table, args.write_cycle))
         .collect();
 
